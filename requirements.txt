@@ -1,0 +1,9 @@
+streamlit
+pandas
+plotly
+numpy
+openai==0.28.0
+folium
+streamlit-folium
+openpyxl
+requests
