@@ -1,7 +1,7 @@
 # Terra-app
 # 🏝️ Terra Caribbean Property Intelligence Dashboard
 
-![Dashboard Screenshot](https://i.imgur.com/QTevWbA.png)  
+![Dashboard Screenshot](https://drive.google.com/file/d/1gffET2HN_p9VVPDAjmEp3A0qc5OO8NjP/view?usp=drive_link)  
 *Example: Interactive dashboard with market analytics*
 
 ## 📌 Overview
@@ -94,16 +94,16 @@ streamlit run app.py
 
 | Section | Description |
 |---------|-------------|
-| ![Market Overview](https://files.fm/u/3mkntqbfft) | Key metrics dashboard |
-| ![Price Analysis](https://files.fm/u/vz53zzu69s) | Interactive price charts |
-| ![Parish Map](https://files.fm/u/vz53zzu69s) | Property location mapping |
+| ![Market Overview](https://drive.google.com/file/d/1fy5c9SiqBoY6U960IeSCfKRUSpohYotv/view?usp=drive_link) | Key metrics dashboard |
+| ![Price Analysis](https://drive.google.com/file/d/1Olrm7S-yQubYLiQBQMJVqikbg4YIAFqt/view?usp=drive_link) | Interactive price charts |
+| ![Parish Map](https://drive.google.com/file/d/1Olrm7S-yQubYLiQBQMJVqikbg4YIAFqt/view?usp=drive_link) | Property location mapping |
 
 ## 🙏 Credits & Acknowledgments
 - **Core Development**: Matthew Blackman
 - **AI Systems**:
   - [DeepSeek Chat](https://chat.deepseek.com) - Primary architecture assistance
   - Google Gemini - Secondary code optimization
-- **Data Providers**: Terra Caribbean MLS
+- **Data Providers**: Terra Caribbean website 
 
 ## 📜 License
 Proprietary software © 2025 Terra Caribbean.  
