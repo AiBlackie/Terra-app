@@ -103,7 +103,7 @@ streamlit run app.py
 - **AI Systems**:
   - [DeepSeek Chat](https://chat.deepseek.com) - Primary architecture assistance
   - Google Gemini - Secondary code optimization
-- **Data Providers**: Terra Caribbean website 
+- **Data Providers**: Terra Caribbean website https://www.terracaribbean.com/Barbados/
 
 ## 📜 License
 Proprietary software © 2025 Terra Caribbean.  
