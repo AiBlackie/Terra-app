@@ -95,7 +95,7 @@ def load_data(island_name):
     excel_file_path = market_config['file']
     header_row = market_config['header_row']
 
-    abs_file_path = "Could not determine absolute path" # Default
+    abs_file_path = "Could not determine absolute path" 
     file_exists = False
     try:
         abs_file_path = os.path.abspath(excel_file_path)
@@ -110,6 +110,8 @@ def load_data(island_name):
              pass 
 
     if not file_exists:
+        # This error message will be displayed if the file is not found.
+        # The debug st.write lines were removed as requested.
         st.error(f"Error: Data file '{excel_file_path}' (resolves to '{abs_file_path}') not found for {island_name} market. Ensure the Excel file is in the correct location and the filename matches exactly (including case).")
         return pd.DataFrame()
 
@@ -135,7 +137,6 @@ def load_data(island_name):
 
     if 'Size' in df.columns:
         df['Size'] = df['Size'].astype(str)
-        # Updated regex to be more robust for numeric extraction before Sq. Ft./Acres
         df['Size_SqFt'] = df['Size'].apply(lambda x: float(re.sub(r'[^\d.]', '', x.split('Sq. Ft.')[0].split('Sq Ft')[0].split('sq. ft.')[0].split('sq ft')[0])) if pd.notna(x) and any(unit in x for unit in ['Sq. Ft.','Sq Ft','sq. ft.','sq ft']) else np.nan)
         df['Size_Acres'] = df['Size'].apply(lambda x: float(re.sub(r'[^\d.]', '', x.split('Acres')[0].split('Acre')[0].split('acres')[0].split('acre')[0])) if pd.notna(x) and any(unit in x for unit in ['Acres','Acre','acres','acre']) else np.nan)
         df['Size_SqFt'] = df['Size_SqFt'].fillna(df['Size_Acres'] * 43560)
@@ -174,7 +175,7 @@ def load_data(island_name):
         }
         for valid_name in valid_parish_names_from_config:
             if valid_name != 'Unknown':
-                 parish_variation_map[valid_name.lower()] = valid_name # Ensure canonical names map to themselves (with correct casing)
+                 parish_variation_map[valid_name.lower()] = valid_name
         
         df['Parish_lower'] = df['Parish'].str.lower()
         df['Parish'] = df['Parish_lower'].map(parish_variation_map) 
@@ -310,7 +311,7 @@ def create_advanced_map(filtered_df, island_name, amenities_to_show=None, show_s
     map_df = filtered_df.dropna(subset=['lat','lon']).copy()
     str_cols, num_cols = ['Name','Property Type','Parish','Category','Type'], ['Price','Bedrooms','Bathrooms','Data Quality Score','Size_SqFt']
     for c in str_cols: map_df[c] = map_df[c].astype(str).fillna('N/A') if c in map_df else 'N/A'
-    for c in num_cols: map_df[c] = pd.to_numeric(map_df[c], errors='coerce').fillna(0) if c in map_df else 0 # Corrected: errors='coerce'
+    for c in num_cols: map_df[c] = pd.to_numeric(map_df[c], errors='coerce').fillna(0) if c in map_df else 0
     for _, r in map_df.iterrows():
         cat = str(r.get('Category','U')).upper(); color = 'red' if cat=='FOR SALE' else 'green' if cat=='FOR RENT' else 'gray'
         icon = 'home' if str(r.get('Type','')).lower()=='residential' else 'building'
@@ -337,21 +338,37 @@ def create_advanced_map(filtered_df, island_name, amenities_to_show=None, show_s
 def show_data_quality_report(df):
     if df.empty: st.caption("No DQ report."); return
     st.subheader("🔍 Data Quality Report")
-    with st.expander("DQ Score Calc"): st.markdown("Base 100. Deductions: Price(-30), PropType(-20), Parish(-15), Desc(-15), Beds(-10), Baths(-10), Size(-10), Cat(-5), Type(-5).")
+    # Restored DQ Score Calculation Description
+    with st.expander("How is the Data Quality Score calculated?"):
+        st.markdown("""
+            The Data Quality Score is a measure of data completeness for each property, starting from a base of 100 points. Points are deducted if key information is missing or marked as 'Unknown':
+            <ul>
+                <li><b>Price is missing or $0:</b> -30 points</li>
+                <li><b>Property Type is 'Unknown':</b> -20 points</li>
+                <li><b>Parish is 'Unknown':</b> -15 points</li>
+                <li><b>Description is empty:</b> -15 points</li>
+                <li><b>Bedrooms count is 0:</b> -10 points</li>
+                <li><b>Bathrooms count is 0:</b> -10 points</li>
+                <li><b>Category (e.g., For Sale, Rent) is 'Unknown':</b> -5 points</li>
+                <li><b>Type (e.g., Residential, Commercial) is 'Unknown':</b> -5 points</li>
+            </ul>
+            The final score is capped between 0 and 100.
+        """, unsafe_allow_html=True)
+
     if 'Data Quality Score' in df and not df['Data Quality Score'].empty:
-        scores = pd.to_numeric(df['Data Quality Score'],errors='coerce').dropna() # Corrected: errors='coerce'
+        scores = pd.to_numeric(df['Data Quality Score'],errors='coerce').dropna() 
         if not scores.empty:
             overall = scores.mean()
             st.markdown(f"""<div style="background:var(--background-card);padding:15px;border-radius:8px;margin-bottom:15px;"><h3 style="margin-top:0;color:var(--primary);">Overall DQ</h3><p style="font-size:22px;margin-bottom:0;"><span class="{get_data_quality_class(overall)}">{overall:.1f}/100</span> ({len(df):,} props)</p></div>""", unsafe_allow_html=True)
     st.markdown("**Column Completeness (Missing/Default):**")
     comp_data, tot_rows = [], len(df)
     cols_dq_check = {
-        'Price':lambda d:(pd.to_numeric(d.get('Price',0),errors='coerce').fillna(0)==0).sum(), # Corrected
+        'Price':lambda d:(pd.to_numeric(d.get('Price',0),errors='coerce').fillna(0)==0).sum(), 
         'Property Type':lambda d:(d.get('Property Type','U')=='U').sum(),
         'Parish':lambda d:(d.get('Parish','U')=='U').sum(),
-        'Bedrooms':lambda d:(pd.to_numeric(d.get('Bedrooms',0),errors='coerce').fillna(0)==0).sum(), # Corrected
-        'Bathrooms':lambda d:(pd.to_numeric(d.get('Bathrooms',0),errors='coerce').fillna(0)==0).sum(), # Corrected
-        'Size_SqFt':lambda d:(pd.isna(d.get('Size_SqFt'))|(pd.to_numeric(d.get('Size_SqFt',0),errors='coerce').fillna(0)==0)).sum(), # Corrected
+        'Bedrooms':lambda d:(pd.to_numeric(d.get('Bedrooms',0),errors='coerce').fillna(0)==0).sum(), 
+        'Bathrooms':lambda d:(pd.to_numeric(d.get('Bathrooms',0),errors='coerce').fillna(0)==0).sum(), 
+        'Size_SqFt':lambda d:(pd.isna(d.get('Size_SqFt'))|(pd.to_numeric(d.get('Size_SqFt',0),errors='coerce').fillna(0)==0)).sum(), 
         'Description':lambda d:(d.get('Description','').astype(str).str.strip()=='').sum(),
         'Category':lambda d:(d.get('Category','U')=='U').sum(),
         'Type':lambda d:(d.get('Type','U')=='U').sum()
@@ -368,7 +385,7 @@ def show_data_quality_report(df):
             with cols_d[i%len(cols_d)]: st.markdown(f"""<div style="background:var(--background-card);padding:10px;border-radius:5px;margin-bottom:8px;"><p style="margin:0 0 3px 0;font-weight:bold;font-size:0.9em;color:var(--primary);">{r_data['Column']}</p><p style="margin:0;font-size:16px;"><span class="{get_data_quality_class(r_data['% Complete'])}">{r_data['% Complete']:.1f}%</span></p><p style="margin:3px 0 0 0;font-size:11px;color:var(--text-neutral);">{r_data['Missing Values']} missing/default</p></div>""", unsafe_allow_html=True)
     st.markdown("**DQ Score Distribution:**")
     if 'Data Quality Score' in df and not df['Data Quality Score'].empty:
-        dq_scores_num = pd.to_numeric(df['Data Quality Score'],errors='coerce').fillna(0) # Corrected
+        dq_scores_num = pd.to_numeric(df['Data Quality Score'],errors='coerce').fillna(0) 
         if not dq_scores_num.empty:
             fig = px.histogram(x=dq_scores_num,nbins=20,range_x=[0,100],title='DQ Scores',color_discrete_sequence=[THEME_PLOTLY['primary']])
             fig.update_layout(xaxis_title='Score',yaxis_title='Properties',paper_bgcolor=THEME_PLOTLY["paper_bgcolor"],plot_bgcolor=THEME_PLOTLY["plot_bgcolor"],font_color=THEME_PLOTLY["font_color"],yaxis_gridcolor=THEME_PLOTLY["grid_color"],xaxis_gridcolor=THEME_PLOTLY["grid_color"])
@@ -433,7 +450,7 @@ def main():
         
         p_min, p_max = 0.0,1.0
         if 'Price' in df_full:
-            v_prices = pd.to_numeric(df_full['Price'],errors='coerce').dropna() # Corrected
+            v_prices = pd.to_numeric(df_full['Price'],errors='coerce').dropna() 
             if not v_prices.empty: p_min,p_max = (float(v_prices.min()),float(v_prices.max()))
             if p_min==p_max: p_max+=1.0
             elif p_max>100000: p_max*=1.05
@@ -454,9 +471,9 @@ def main():
         (safe_isin_filter(df_geocoded,'Property Type',sel_prop_type)) &
         (safe_isin_filter(df_geocoded,'Category',sel_category)) &
         (safe_isin_filter(df_geocoded,'Parish',sel_parish)) &
-        (pd.to_numeric(df_geocoded['Price'],errors='coerce').fillna(0) >= sel_price_range[0]) & # Corrected
-        (pd.to_numeric(df_geocoded['Price'],errors='coerce').fillna(0) <= sel_price_range[1]) & # Corrected
-        (pd.to_numeric(df_geocoded['Data Quality Score'],errors='coerce').fillna(0) >= sel_quality) # Corrected
+        (pd.to_numeric(df_geocoded['Price'],errors='coerce').fillna(0) >= sel_price_range[0]) & 
+        (pd.to_numeric(df_geocoded['Price'],errors='coerce').fillna(0) <= sel_price_range[1]) & 
+        (pd.to_numeric(df_geocoded['Data Quality Score'],errors='coerce').fillna(0) >= sel_quality) 
     )
     filtered_df = df_geocoded[conditions].copy()
 
@@ -485,9 +502,9 @@ def main():
     
     st.subheader(f'📊 {selected_market} Overview (Filtered)')
     tot_f,res_f,com_f = len(filtered_df),len(filtered_df[filtered_df.get('Type','')=='Residential']),len(filtered_df[filtered_df.get('Type','')=='Commercial'])
-    hp_f = pd.to_numeric(filtered_df['Price'],errors='coerce').max() if not filtered_df.empty and 'Price' in filtered_df else 0 # Corrected
-    aq_f = pd.to_numeric(filtered_df['Data Quality Score'],errors='coerce').mean() if not filtered_df.empty and 'Data Quality Score' in filtered_df else 0 # Corrected
-    as_f = pd.to_numeric(filtered_df['Size_SqFt'],errors='coerce').mean() if not filtered_df.empty and 'Size_SqFt' in filtered_df else 0 # Corrected
+    hp_f = pd.to_numeric(filtered_df['Price'],errors='coerce').max() if not filtered_df.empty and 'Price' in filtered_df else 0 
+    aq_f = pd.to_numeric(filtered_df['Data Quality Score'],errors='coerce').mean() if not filtered_df.empty and 'Data Quality Score' in filtered_df else 0 
+    as_f = pd.to_numeric(filtered_df['Size_SqFt'],errors='coerce').mean() if not filtered_df.empty and 'Size_SqFt' in filtered_df else 0 
 
     metrics_main = [("Total Props",f"{tot_f:,}"),("Residential",f"{res_f:,}"),("Commercial",f"{com_f:,}"),("Highest Price",format_currency(hp_f)),("Avg DQ",f"{aq_f:.1f}/100" if tot_f>0 and not np.isnan(aq_f) else "N/A"),("Avg Size (Sq Ft)",f"{as_f:,.0f}" if tot_f>0 and pd.notna(as_f) and as_f>0 else "N/A")]
     cols_main_metrics = st.columns(len(metrics_main))
@@ -498,7 +515,7 @@ def main():
     s_c1,s_c2 = st.columns([0.6,0.4])
     with s_c1:
         if not filtered_df.empty and 'Price' in filtered_df:
-            pr_gt0 = pd.to_numeric(filtered_df['Price'],errors='coerce').dropna(); pr_gt0=pr_gt0[pr_gt0>0] # Corrected
+            pr_gt0 = pd.to_numeric(filtered_df['Price'],errors='coerce').dropna(); pr_gt0=pr_gt0[pr_gt0>0] 
             if not pr_gt0.empty:
                 st.markdown("### Price Distribution (USD)")
                 av,md,p25,p75 = pr_gt0.mean(),pr_gt0.median(),pr_gt0.quantile(0.25),pr_gt0.quantile(0.75)
@@ -522,7 +539,7 @@ def main():
                     if tot_f>0: st.markdown(f"- **{par_top.index[0]}** most active ({par_top.values[0]} props).\n- Top {len(par_top)}: {par_top.sum()/tot_f*100:.0f}% of selection.")
     
     if not filtered_df.empty and 'Property Type' in filtered_df and 'Price' in filtered_df:
-        apt_df_prices = pd.to_numeric(filtered_df['Price'],errors='coerce').fillna(0); apt_df = filtered_df[apt_df_prices>0] # Corrected
+        apt_df_prices = pd.to_numeric(filtered_df['Price'],errors='coerce').fillna(0); apt_df = filtered_df[apt_df_prices>0] 
         if not apt_df.empty:
             apt = apt_df.groupby('Property Type')['Price'].mean().sort_values(ascending=False)
             if not apt.empty:
@@ -533,13 +550,16 @@ def main():
     
     if not filtered_df.empty and 'Bedrooms' in filtered_df:
         st.markdown("### Bedroom Analysis")
-        beds0 = filtered_df[pd.to_numeric(filtered_df['Bedrooms'],errors='coerce').fillna(0)>0]['Bedrooms'].astype(int).value_counts().sort_index() # Corrected
+        beds0 = filtered_df[pd.to_numeric(filtered_df['Bedrooms'],errors='coerce').fillna(0)>0]['Bedrooms'].astype(int).value_counts().sort_index() 
         if not beds0.empty:
             fig=px.line(x=beds0.index,y=beds0.values,title='Properties by Bedrooms',markers=True,color_discrete_sequence=[THEME_PLOTLY['accent']])
             fig.update_layout(xaxis_title="Bedrooms",yaxis_title="Properties",paper_bgcolor=THEME_PLOTLY["paper_bgcolor"],plot_bgcolor=THEME_PLOTLY["plot_bgcolor"],font_color=THEME_PLOTLY["font_color"],yaxis_gridcolor=THEME_PLOTLY["grid_color"],xaxis_gridcolor=THEME_PLOTLY["grid_color"],xaxis_tickmode='linear')
             st.plotly_chart(fig,use_container_width=True); st.markdown(f"- Most common: **{int(beds0.idxmax())}-bedroom** ({beds0.max()} listings).")
 
-    st.subheader(f'🌍 Interactive Map - {selected_market}'); st.caption("📍 Markers: parish-level approx. locations.")
+    # Restored Map Caption
+    st.subheader(f'🌍 Interactive Property Map - {selected_market}')
+    st.caption("📍 Please note: Property markers on the map indicate the approximate location within their respective parish, not the exact street address. The jitter added to markers is for visualization purposes to distinguish closely located properties.")
+    
     if not filtered_df.empty or sel_amenities or sel_school_zones:
         map_o = create_advanced_map(filtered_df,selected_market,sel_amenities,sel_school_zones)
         if map_o:
@@ -584,10 +604,10 @@ def main():
         disp_df = filtered_df.copy()
         for c,dv in {'Name':'N/A','Type':'N/A','Category':'N/A','Parish':'N/A','Property Type':'N/A','Description':'N/A'}.items():
             if c not in disp_df: disp_df[c]=dv
-        disp_df['Price_f'] = pd.to_numeric(disp_df['Price'],errors='coerce').apply(lambda x:format_currency(x)) # Corrected
-        disp_df['Size_f'] = pd.to_numeric(disp_df['Size_SqFt'],errors='coerce').apply(lambda x:f"{x:,.0f} Sq. Ft." if pd.notna(x)and x>0 else("0 Sq. Ft." if x==0 else "N/A")) # Corrected
-        disp_df['DQ_f'] = pd.to_numeric(disp_df['Data Quality Score'],errors='coerce').apply(lambda x:f"<span class='{get_data_quality_class(x)}'>{x:.0f}/100</span>" if pd.notna(x) else "N/A") # Corrected
-        for c in ['Bedrooms','Bathrooms']: disp_df[c]=pd.to_numeric(disp_df[c],errors='coerce').fillna(0).astype(int) # Corrected
+        disp_df['Price_f'] = pd.to_numeric(disp_df['Price'],errors='coerce').apply(lambda x:format_currency(x)) 
+        disp_df['Size_f'] = pd.to_numeric(disp_df['Size_SqFt'],errors='coerce').apply(lambda x:f"{x:,.0f} Sq. Ft." if pd.notna(x)and x>0 else("0 Sq. Ft." if x==0 else "N/A")) 
+        disp_df['DQ_f'] = pd.to_numeric(disp_df['Data Quality Score'],errors='coerce').apply(lambda x:f"<span class='{get_data_quality_class(x)}'>{x:.0f}/100</span>" if pd.notna(x) else "N/A") 
+        for c in ['Bedrooms','Bathrooms']: disp_df[c]=pd.to_numeric(disp_df[c],errors='coerce').fillna(0).astype(int) 
         
         disp_order = ['Name','Type','Category','Parish','Property Type','Price_f','Size_f','Bedrooms','Bathrooms','DQ_f','Description']
         final_cols = [c for c in disp_order if c in disp_df]
