@@ -107,11 +107,9 @@ def load_data(island_name):
         try:
             file_exists = os.path.exists(excel_file_path)
         except Exception:
-             pass 
+            pass 
 
     if not file_exists:
-        # This error message will be displayed if the file is not found.
-        # The debug st.write lines were removed as requested.
         st.error(f"Error: Data file '{excel_file_path}' (resolves to '{abs_file_path}') not found for {island_name} market. Ensure the Excel file is in the correct location and the filename matches exactly (including case).")
         return pd.DataFrame()
 
@@ -175,7 +173,7 @@ def load_data(island_name):
         }
         for valid_name in valid_parish_names_from_config:
             if valid_name != 'Unknown':
-                 parish_variation_map[valid_name.lower()] = valid_name
+                    parish_variation_map[valid_name.lower()] = valid_name
         
         df['Parish_lower'] = df['Parish'].str.lower()
         df['Parish'] = df['Parish_lower'].map(parish_variation_map) 
@@ -338,7 +336,6 @@ def create_advanced_map(filtered_df, island_name, amenities_to_show=None, show_s
 def show_data_quality_report(df):
     if df.empty: st.caption("No DQ report."); return
     st.subheader("🔍 Data Quality Report")
-    # Restored DQ Score Calculation Description
     with st.expander("How is the Data Quality Score calculated?"):
         st.markdown("""
             The Data Quality Score is a measure of data completeness for each property, starting from a base of 100 points. Points are deducted if key information is missing or marked as 'Unknown':
@@ -349,7 +346,6 @@ def show_data_quality_report(df):
                 <li><b>Description is empty:</b> -15 points</li>
                 <li><b>Bedrooms count is 0:</b> -10 points</li>
                 <li><b>Bathrooms count is 0:</b> -10 points</li>
-                <li><b>Size (Sq. Ft.) is missing or 0:</b> -10 points</li> 
                 <li><b>Category (e.g., For Sale, Rent) is 'Unknown':</b> -5 points</li>
                 <li><b>Type (e.g., Residential, Commercial) is 'Unknown':</b> -5 points</li>
             </ul>
@@ -430,7 +426,10 @@ def main():
         markets_list = list(MARKET_DATA_SOURCES.keys())
         selected_market = st.selectbox("Select Market",options=markets_list,index=markets_list.index('Barbados') if 'Barbados' in markets_list else 0)
         sel_theme = st.radio("Theme",['Light','Dark'],index=0 if st.session_state.current_theme=='Light' else 1)
-        if sel_theme != st.session_state.current_theme: st.session_state.current_theme = sel_theme; st.rerun()
+        if sel_theme != st.session_state.current_theme: 
+            st.session_state.current_theme = sel_theme
+            THEME_PLOTLY = light_theme_plotly if st.session_state.current_theme == 'Light' else dark_theme_plotly # Update global THEME_PLOTLY
+            st.rerun()
         
         df_full = load_data(selected_market)
         if df_full.empty: st.error(f"Stopping: No data loaded for {selected_market}. Check file and logs."); return
@@ -440,7 +439,7 @@ def main():
         if not ai_enabled: st.info("AI Search disabled.")
 
         st.subheader("Standard Filters")
-        def get_unique_opts(df, col): return sorted(df[col].astype(str).unique()) if col in df.columns else []
+        def get_unique_opts(df, col): return sorted(df[col].astype(str).unique()) if col in df.columns and not df[col].empty else []
         prop_type_opts = get_unique_opts(df_full,'Property Type')
         sel_prop_type = st.multiselect('Property Type',options=prop_type_opts,default=prop_type_opts)
         cat_opts = get_unique_opts(df_full,'Category')
@@ -450,31 +449,56 @@ def main():
         sel_parish = st.multiselect('Parish',options=par_opts,default=def_parishes)
         
         p_min, p_max = 0.0,1.0
-        if 'Price' in df_full:
+        if 'Price' in df_full.columns: # Check if 'Price' column exists
             v_prices = pd.to_numeric(df_full['Price'],errors='coerce').dropna() 
-            if not v_prices.empty: p_min,p_max = (float(v_prices.min()),float(v_prices.max()))
-            if p_min==p_max: p_max+=1.0
-            elif p_max>100000: p_max*=1.05
+            if not v_prices.empty: 
+                p_min,p_max = (float(v_prices.min()),float(v_prices.max()))
+                if p_min==p_max and p_min == 0: # If min and max are both 0
+                     p_max = 1000000 # Default max if only 0 prices
+                elif p_min==p_max: # If min and max are same but not 0
+                    p_max += max(1.0, p_max*0.1) # Add 10% or 1
+                elif p_max > 100000: 
+                    p_max *= 1.05 # Slight increase for better slider range
+            else: # No valid prices, use default range
+                p_min, p_max = 0.0, 1000000.0
+        else: # Price column doesn't exist, use default range
+            p_min, p_max = 0.0, 1000000.0
+            
         p_step = max(1.0,(p_max-p_min)/200 if (p_max-p_min)>0 else 1.0)
+        # Ensure p_min is not greater than p_max for slider
+        if p_min > p_max : p_min = p_max 
         sel_price_range = st.slider('Price Range (USD)',min_value=p_min,max_value=p_max,value=(p_min,p_max),step=p_step,format="$%.0f")
 
+
         st.subheader("Map Features")
-        amen_keys = list(MARKET_DATA_SOURCES.get(selected_market,{}).get('amenities',{}).keys())
+        market_config = MARKET_DATA_SOURCES.get(selected_market,{})
+        amenities_config = market_config.get('amenities',{})
+        amen_keys = list(amenities_config.keys())
         sel_amenities = st.multiselect("Amenities",options=amen_keys,default=[a for a in ['Beach','School','Restaurant'] if a in amen_keys])
         sel_school_zones = st.checkbox("School Zones (1km)",value=False) if 'School' in amen_keys else False
         
         st.subheader("Data Quality")
-        sel_quality = st.slider("Min DQ Score",0,100,30,5) if 'Data Quality Score' in df_full else 0
+        sel_quality = st.slider("Min DQ Score",0,100,30,5) if 'Data Quality Score' in df_full.columns else 0 # Check if col exists
         
     df_geocoded = geocode_properties(df_full.copy(),selected_market)
     
+    # Ensure Price and Data Quality Score columns exist before filtering on them
+    price_conditions = pd.Series(True, index=df_geocoded.index)
+    if 'Price' in df_geocoded.columns:
+        prices_numeric = pd.to_numeric(df_geocoded['Price'], errors='coerce').fillna(0)
+        price_conditions = (prices_numeric >= sel_price_range[0]) & (prices_numeric <= sel_price_range[1])
+
+    quality_conditions = pd.Series(True, index=df_geocoded.index)
+    if 'Data Quality Score' in df_geocoded.columns:
+        quality_scores_numeric = pd.to_numeric(df_geocoded['Data Quality Score'], errors='coerce').fillna(0)
+        quality_conditions = (quality_scores_numeric >= sel_quality)
+
     conditions = (
         (safe_isin_filter(df_geocoded,'Property Type',sel_prop_type)) &
         (safe_isin_filter(df_geocoded,'Category',sel_category)) &
         (safe_isin_filter(df_geocoded,'Parish',sel_parish)) &
-        (pd.to_numeric(df_geocoded['Price'],errors='coerce').fillna(0) >= sel_price_range[0]) & 
-        (pd.to_numeric(df_geocoded['Price'],errors='coerce').fillna(0) <= sel_price_range[1]) & 
-        (pd.to_numeric(df_geocoded['Data Quality Score'],errors='coerce').fillna(0) >= sel_quality) 
+        price_conditions & 
+        quality_conditions 
     )
     filtered_df = df_geocoded[conditions].copy()
 
@@ -483,31 +507,56 @@ def main():
         if ai_enabled:
             res_nl = natural_language_query(nl_query,temp_df_nl)
             if res_nl is not None and not res_nl.empty: filtered_df=res_nl; st.success(f"AI refined to {len(filtered_df)} props.")
-            elif len(temp_df_nl)>0: st.warning("AI no further results.")
+            elif len(temp_df_nl)>0 and not res_nl.empty and len(res_nl) < len(temp_df_nl) : filtered_df=res_nl; st.success(f"AI refined to {len(filtered_df)} props.") # Handle if AI returns a subset
+            elif len(temp_df_nl)>0 and (res_nl is None or res_nl.empty or len(res_nl) == len(temp_df_nl)): st.warning("AI query did not further refine results or found no matches for the refinement.")
             else: st.warning("No props match initial filters or AI query.")
-        else:
+
+        else: # Standard search if AI is not enabled
             res_search = apply_search_filter(temp_df_nl,nl_query)
-            if res_search is not None and not res_search.empty: filtered_df=res_search; st.info(f"Search found {len(filtered_df)} props.")
-            elif len(temp_df_nl)>0: st.warning("Search no further results.")
-            else: st.warning("No props match initial filters or search.")
+            if res_search is not None and not res_search.empty: 
+                filtered_df=res_search
+                st.info(f"Search found {len(filtered_df)} props.")
+            elif len(temp_df_nl)>0 and (res_search is None or res_search.empty or len(res_search) == len(temp_df_nl)): 
+                 st.warning("Search did not further refine results or found no matches for the search term.")
+            else: 
+                st.warning("No props match initial filters or search.")
+
 
     st.title(f"🏝️ Terra Caribbean Property Intelligence")
     st.markdown(f"""<span style="color:var(--text-neutral);font-size:1.1em;">Insights | <b>{selected_market}</b> | <b>{len(filtered_df):,}</b> props analyzed | Prices USD</span>""",unsafe_allow_html=True)
 
     if ai_enabled:
         with st.expander(f"💡 AI Insights for {selected_market}",expanded=len(filtered_df)>=5):
-            if len(filtered_df)<5: st.info(f"Need min 5 props ({len(filtered_df)} selected).")
+            if len(filtered_df)<5: st.info(f"Need min 5 props ({len(filtered_df)} selected) for AI insights.")
             elif st.button(f"Generate Insights ({len(filtered_df)} Props)",key="gen_ins_main"):
                 with st.spinner("Analyzing..."): st.markdown(generate_ai_insights(filtered_df,df_geocoded,selected_market))
-            else: st.caption("Click for AI insights (Prices USD, Sizes Sq.Ft.).")
+            else: st.caption("Click the button above to generate AI-powered insights based on the current filters (Prices in USD, Sizes in Sq.Ft.).")
     
     st.subheader(f'📊 {selected_market} Overview (Filtered)')
-    tot_f,res_f,com_f = len(filtered_df),len(filtered_df[filtered_df.get('Type','')=='Residential']),len(filtered_df[filtered_df.get('Type','')=='Commercial'])
-    hp_f = pd.to_numeric(filtered_df['Price'],errors='coerce').max() if not filtered_df.empty and 'Price' in filtered_df else 0 
-    aq_f = pd.to_numeric(filtered_df['Data Quality Score'],errors='coerce').mean() if not filtered_df.empty and 'Data Quality Score' in filtered_df else 0 
-    as_f = pd.to_numeric(filtered_df['Size_SqFt'],errors='coerce').mean() if not filtered_df.empty and 'Size_SqFt' in filtered_df else 0 
+    tot_f = len(filtered_df)
+    res_f = len(filtered_df[filtered_df.get('Type','')=='Residential']) if 'Type' in filtered_df.columns else 0
+    com_f = len(filtered_df[filtered_df.get('Type','')=='Commercial']) if 'Type' in filtered_df.columns else 0
+    
+    hp_f = 0
+    if 'Price' in filtered_df.columns and not filtered_df.empty:
+        valid_prices = pd.to_numeric(filtered_df['Price'],errors='coerce').dropna()
+        if not valid_prices.empty:
+            hp_f = valid_prices.max()
 
-    metrics_main = [("Total Props",f"{tot_f:,}"),("Residential",f"{res_f:,}"),("Commercial",f"{com_f:,}"),("Highest Price",format_currency(hp_f)),("Avg DQ",f"{aq_f:.1f}/100" if tot_f>0 and not np.isnan(aq_f) else "N/A"),("Avg Size (Sq Ft)",f"{as_f:,.0f}" if tot_f>0 and pd.notna(as_f) and as_f>0 else "N/A")]
+    aq_f = 0
+    if 'Data Quality Score' in filtered_df.columns and not filtered_df.empty:
+        valid_dq = pd.to_numeric(filtered_df['Data Quality Score'],errors='coerce').dropna()
+        if not valid_dq.empty:
+            aq_f = valid_dq.mean()
+            
+    as_f = 0
+    if 'Size_SqFt' in filtered_df.columns and not filtered_df.empty:
+        valid_size = pd.to_numeric(filtered_df['Size_SqFt'],errors='coerce').replace(0, np.nan).dropna() # Exclude 0 for mean
+        if not valid_size.empty:
+            as_f = valid_size.mean()
+
+
+    metrics_main = [("Total Props",f"{tot_f:,}"),("Residential",f"{res_f:,}"),("Commercial",f"{com_f:,}"),("Highest Price",format_currency(hp_f)),("Avg DQ",f"{aq_f:.1f}/100" if tot_f>0 and not np.isnan(aq_f) and aq_f > 0 else "N/A"),("Avg Size (Sq Ft)",f"{as_f:,.0f}" if tot_f>0 and pd.notna(as_f) and as_f>0 else "N/A")]
     cols_main_metrics = st.columns(len(metrics_main))
     for i,(l,v) in enumerate(metrics_main):
         with cols_main_metrics[i]: st.markdown(f'<div class="metric-card"><h3>{l}</h3><p>{v}</p></div>',unsafe_allow_html=True)
@@ -515,49 +564,78 @@ def main():
     st.subheader('📈 Market Insights & Storytelling')
     s_c1,s_c2 = st.columns([0.6,0.4])
     with s_c1:
-        if not filtered_df.empty and 'Price' in filtered_df:
-            pr_gt0 = pd.to_numeric(filtered_df['Price'],errors='coerce').dropna(); pr_gt0=pr_gt0[pr_gt0>0] 
+        if not filtered_df.empty and 'Price' in filtered_df.columns:
+            pr_gt0 = pd.to_numeric(filtered_df['Price'],errors='coerce').dropna()
+            pr_gt0=pr_gt0[pr_gt0>0] 
             if not pr_gt0.empty:
                 st.markdown("### Price Distribution (USD)")
-                av,md,p25,p75 = pr_gt0.mean(),pr_gt0.median(),pr_gt0.quantile(0.25),pr_gt0.quantile(0.75)
+                av,md = pr_gt0.mean(),pr_gt0.median()
                 fig=px.histogram(pr_gt0,nbins=30,title='Price Distribution',labels={'value':'Price (USD)'},color_discrete_sequence=[THEME_PLOTLY['primary']])
                 fig.add_vline(x=av,line_dash="dash",line_color="red",annotation_text=f"Avg: {format_currency(av)}",annotation_position="top right")
                 fig.add_vline(x=md,line_dash="dash",line_color="green",annotation_text=f"Median: {format_currency(md)}",annotation_position="top left")
                 fig.update_layout(paper_bgcolor=THEME_PLOTLY["paper_bgcolor"],plot_bgcolor=THEME_PLOTLY["plot_bgcolor"],font_color=THEME_PLOTLY["font_color"],yaxis_gridcolor=THEME_PLOTLY["grid_color"],xaxis_gridcolor=THEME_PLOTLY["grid_color"])
                 st.plotly_chart(fig,use_container_width=True)
                 st.markdown(f"- Avg: **{format_currency(av)}** | Med: **{format_currency(md)}**\n- Range: **{format_currency(pr_gt0.min())}** to **{format_currency(pr_gt0.max())}**")
+            else:
+                st.caption("No properties with valid prices > $0 in the current selection to display price distribution.")
+        else:
+            st.caption("Price data not available for distribution chart.")
+
     with s_c2:
-        if not filtered_df.empty and 'Parish' in filtered_df:
+        if not filtered_df.empty and 'Parish' in filtered_df.columns:
             st.markdown("### Parish Distribution")
             par_counts = filtered_df['Parish'].value_counts()
-            if not par_counts.empty and par_counts.sum()>0:
-                par_top = par_counts[par_counts.index!='Unknown'].nlargest(5)
+            par_counts_known = par_counts[par_counts.index!='Unknown']
+            if not par_counts_known.empty and par_counts_known.sum()>0:
+                par_top = par_counts_known.nlargest(5)
                 if not par_top.empty:
-                    fig=px.pie(par_top,names=par_top.index,values=par_top.values,title='Top Parishes',color=par_top.index,color_discrete_sequence=THEME_PLOTLY["bar_palette"])
+                    fig=px.pie(par_top,names=par_top.index,values=par_top.values,title='Top Parishes (Excluding "Unknown")',color=par_top.index,color_discrete_sequence=THEME_PLOTLY["bar_palette"])
                     fig.update_traces(textposition='inside' if len(par_top)<=5 else 'outside',textinfo='percent+label')
                     fig.update_layout(paper_bgcolor=THEME_PLOTLY["paper_bgcolor"],plot_bgcolor=THEME_PLOTLY["plot_bgcolor"],font_color=THEME_PLOTLY["font_color"],showlegend=False,title_x=0.5)
                     st.plotly_chart(fig,use_container_width=True)
-                    if tot_f>0: st.markdown(f"- **{par_top.index[0]}** most active ({par_top.values[0]} props).\n- Top {len(par_top)}: {par_top.sum()/tot_f*100:.0f}% of selection.")
+                    if tot_f > 0 and len(par_top.index) > 0 and par_top.values[0] > 0 : 
+                        st.markdown(f"- **{par_top.index[0]}** most active ({par_top.values[0]} props).\n- Top {len(par_top)} shown make up {par_top.sum()/max(1, par_counts_known.sum())*100:.0f}% of known parish listings.") # Use par_counts_known.sum() for percentage base
+                else:
+                    st.caption("No known parish data to display distribution.")
+            else:
+                st.caption("No parish data (excluding 'Unknown') to display distribution.")
+        else:
+            st.caption("Parish data not available for distribution chart.")
     
-    if not filtered_df.empty and 'Property Type' in filtered_df and 'Price' in filtered_df:
-        apt_df_prices = pd.to_numeric(filtered_df['Price'],errors='coerce').fillna(0); apt_df = filtered_df[apt_df_prices>0] 
-        if not apt_df.empty:
+    if not filtered_df.empty and 'Property Type' in filtered_df.columns and 'Price' in filtered_df.columns:
+        apt_df_prices = pd.to_numeric(filtered_df['Price'],errors='coerce').fillna(0)
+        apt_df = filtered_df[apt_df_prices>0].copy() # Ensure it's a copy
+        if not apt_df.empty and 'Property Type' in apt_df.columns: # Check again after filtering
             apt = apt_df.groupby('Property Type')['Price'].mean().sort_values(ascending=False)
             if not apt.empty:
                 st.markdown("### Avg Price by Property Type (USD)")
                 fig = px.bar(apt,x=apt.values,y=apt.index,orientation='h',title='Avg Price by Property Type',color=apt.index,color_discrete_sequence=THEME_PLOTLY["bar_palette"])
                 fig.update_layout(paper_bgcolor=THEME_PLOTLY["paper_bgcolor"],plot_bgcolor=THEME_PLOTLY["plot_bgcolor"],font_color=THEME_PLOTLY["font_color"],yaxis_title='Property Type',xaxis_title='Avg Price (USD)',showlegend=False,title_x=0.5)
                 fig.update_traces(hovertemplate='<b>%{y}</b><br>Avg Price: $%{x:,.0f} USD'); st.plotly_chart(fig,use_container_width=True)
+            else:
+                st.caption("No data to display average price by property type.")
+        else:
+            st.caption("No properties with price > $0 to analyze average price by property type.")
     
-    if not filtered_df.empty and 'Bedrooms' in filtered_df:
+    if not filtered_df.empty and 'Bedrooms' in filtered_df.columns:
         st.markdown("### Bedroom Analysis")
-        beds0 = filtered_df[pd.to_numeric(filtered_df['Bedrooms'],errors='coerce').fillna(0)>0]['Bedrooms'].astype(int).value_counts().sort_index() 
-        if not beds0.empty:
-            fig=px.line(x=beds0.index,y=beds0.values,title='Properties by Bedrooms',markers=True,color_discrete_sequence=[THEME_PLOTLY['accent']])
-            fig.update_layout(xaxis_title="Bedrooms",yaxis_title="Properties",paper_bgcolor=THEME_PLOTLY["paper_bgcolor"],plot_bgcolor=THEME_PLOTLY["plot_bgcolor"],font_color=THEME_PLOTLY["font_color"],yaxis_gridcolor=THEME_PLOTLY["grid_color"],xaxis_gridcolor=THEME_PLOTLY["grid_color"],xaxis_tickmode='linear')
-            st.plotly_chart(fig,use_container_width=True); st.markdown(f"- Most common: **{int(beds0.idxmax())}-bedroom** ({beds0.max()} listings).")
+        # Filter for bedrooms > 0 before value_counts
+        valid_bedrooms_df = filtered_df[pd.to_numeric(filtered_df['Bedrooms'],errors='coerce').fillna(0)>0]
+        if not valid_bedrooms_df.empty:
+            beds0 = valid_bedrooms_df['Bedrooms'].astype(int).value_counts().sort_index() 
+            if not beds0.empty:
+                fig=px.line(x=beds0.index,y=beds0.values,title='Properties by Number of Bedrooms',markers=True,color_discrete_sequence=[THEME_PLOTLY['accent']])
+                fig.update_layout(xaxis_title="Number of Bedrooms",yaxis_title="Number of Properties",paper_bgcolor=THEME_PLOTLY["paper_bgcolor"],plot_bgcolor=THEME_PLOTLY["plot_bgcolor"],font_color=THEME_PLOTLY["font_color"],yaxis_gridcolor=THEME_PLOTLY["grid_color"],xaxis_gridcolor=THEME_PLOTLY["grid_color"],xaxis_tickmode='linear', xaxis_dtick=1)
+                st.plotly_chart(fig,use_container_width=True)
+                st.markdown(f"- Most common: **{int(beds0.idxmax())}-bedroom** properties ({beds0.max()} listings).")
+            else:
+                st.caption("No properties with a specified number of bedrooms > 0.")
+        else:
+            st.caption("No properties with a specified number of bedrooms > 0.")
+    else:
+        st.caption("Bedroom data not available for analysis.")
 
-    # Restored Map Caption
+
     st.subheader(f'🌍 Interactive Property Map - {selected_market}')
     st.caption("📍 Please note: Property markers on the map indicate the approximate location within their respective parish, not the exact street address. The jitter added to markers is for visualization purposes to distinguish closely located properties.")
     
@@ -566,62 +644,142 @@ def main():
         if map_o:
             folium_static(map_o,width=1200,height=600)
             leg_h = []
-            map_cs = filtered_df['Category'].astype(str).str.upper().unique() if 'Category' in filtered_df and not filtered_df.empty else []
-            if 'FOR SALE' in map_cs: leg_h.append('<div class="map-legend-item"><div class="map-legend-color-box" style="background:red;"></div>For Sale</div>')
-            if 'FOR RENT' in map_cs: leg_h.append('<div class="map-legend-item"><div class="map-legend-color-box" style="background:green;"></div>For Rent</div>')
-            if any(c not in ['FOR SALE','FOR RENT'] for c in map_cs): leg_h.append('<div class="map-legend-item"><div class="map-legend-color-box" style="background:gray;"></div>Other</div>')
-            if sel_school_zones and 'School' in amen_keys: leg_h.append('<div class="map-legend-item"><div class="map-legend-color-box" style="background:orange;opacity:0.5;"></div>School Zone</div>')
+            if 'Category' in filtered_df.columns and not filtered_df.empty:
+                 map_cs = filtered_df['Category'].astype(str).str.upper().unique()
+                 if 'FOR SALE' in map_cs: leg_h.append('<div class="map-legend-item"><div class="map-legend-color-box" style="background:red;"></div>For Sale</div>')
+                 if 'FOR RENT' in map_cs: leg_h.append('<div class="map-legend-item"><div class="map-legend-color-box" style="background:green;"></div>For Rent</div>')
+                 if any(c not in ['FOR SALE','FOR RENT','UNKNOWN'] for c in map_cs if pd.notna(c) and c.strip() != ""): leg_h.append('<div class="map-legend-item"><div class="map-legend-color-box" style="background:gray;"></div>Other Status</div>')
+            if sel_school_zones and 'School' in amen_keys: leg_h.append('<div class="map-legend-item"><div class="map-legend-color-box" style="background:orange;opacity:0.5;"></div>School Zone (1km)</div>')
             if leg_h: st.markdown(f"""<div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:5px;justify-content:center;">{''.join(leg_h)}</div>""",unsafe_allow_html=True)
+        elif filtered_df.empty :
+             st.caption("No properties to display on the map based on current filters. Try adjusting filters or showing amenities.")
+    else:
+        st.caption("No properties or map features selected to display.")
     
     show_data_quality_report(filtered_df)
 
+    # ========== AMENDED SECTION FOR TRANSACTION TYPE DISTRIBUTION ==========
     st.subheader('📑 Transaction Type Distribution')
-    if not filtered_df.empty and 'Category' in filtered_df and 'Type' in filtered_df:
-        use_cols_t = filtered_df['Type'].nunique(dropna=False)>1 and filtered_df['Category'].nunique(dropna=False)>1
-        c_t1,c_t2 = st.columns(2) if use_cols_t else (st,None)
-        with c_t1: create_transaction_pie_charts(filtered_df,THEME_PLOTLY)
-        if c_t2:
-            with c_t2:
-                ttc = pd.crosstab(filtered_df['Type'],filtered_df['Category'])
-                if not ttc.empty and ttc.values.sum()>0:
-                    cmap_bar = {str(k).upper():THEME_PLOTLY["category_colors"].get(str(k).upper(),THEME_PLOTLY["neutral_grey"]) for k in ttc.columns}
-                    fig_b = px.bar(ttc,barmode='group',color_discrete_map=cmap_bar,title="Transactions by Property Category")
-                    fig_b.update_layout(title_x=0.5,paper_bgcolor=THEME_PLOTLY["paper_bgcolor"],plot_bgcolor=THEME_PLOTLY["plot_bgcolor"],font_color=THEME_PLOTLY["font_color"],legend_title_text='Transaction',xaxis_title=None,yaxis_gridcolor=THEME_PLOTLY["grid_color"],xaxis_gridcolor=THEME_PLOTLY["grid_color"])
-                    st.plotly_chart(fig_b,use_container_width=True)
     
+    if not filtered_df.empty and 'Category' in filtered_df.columns:
+        use_two_columns = False
+        if 'Type' in filtered_df.columns:
+            if filtered_df['Type'].nunique(dropna=False) > 1 and \
+               filtered_df['Category'].nunique(dropna=False) > 1:
+                use_two_columns = True
+
+        if use_two_columns:
+            c_t1, c_t2 = st.columns(2)
+            with c_t1:
+                create_transaction_pie_charts(filtered_df, THEME_PLOTLY)
+            
+            with c_t2:
+                ttc = pd.crosstab(filtered_df['Type'], filtered_df['Category'])
+                if not ttc.empty and ttc.values.sum() > 0:
+                    # Ensure all categories from crosstab are in the color map
+                    cmap_categories = ttc.columns.astype(str).str.upper()
+                    cmap_bar = {cat: THEME_PLOTLY["category_colors"].get(cat, THEME_PLOTLY["neutral_grey"]) for cat in cmap_categories}
+                    
+                    fig_b = px.bar(ttc, barmode='group', color_discrete_map=cmap_bar, title="Transactions: Type vs Category")
+                    fig_b.update_layout(
+                        title_x=0.5,
+                        paper_bgcolor=THEME_PLOTLY["paper_bgcolor"],
+                        plot_bgcolor=THEME_PLOTLY["plot_bgcolor"],
+                        font_color=THEME_PLOTLY["font_color"],
+                        legend_title_text='Category',
+                        xaxis_title="Property Type",
+                        yaxis_title="Count",
+                        yaxis_gridcolor=THEME_PLOTLY["grid_color"],
+                        xaxis_gridcolor=THEME_PLOTLY["grid_color"]
+                    )
+                    st.plotly_chart(fig_b, use_container_width=True)
+                else:
+                    st.caption("No data for 'Type vs Category' breakdown.")
+        else:
+            create_transaction_pie_charts(filtered_df, THEME_PLOTLY)
+            if 'Type' not in filtered_df.columns:
+                st.caption("Detailed breakdown by Property Type (second chart) requires 'Type' data.")
+            elif not (filtered_df.get('Type', pd.Series(dtype=str)).nunique(dropna=False) > 1 and \
+                      filtered_df['Category'].nunique(dropna=False) > 1):
+                st.caption("Showing overall transaction distribution. More diversity in 'Property Type' and 'Category' data is needed for a side-by-side breakdown.")
+    else:
+        create_transaction_pie_charts(filtered_df, THEME_PLOTLY) # Shows its own caption if no data
+    # ========== END OF AMENDED SECTION ==========
+        
     st.subheader('🏘️ Property Type Breakdown')
-    has_res_f = 'Type' in filtered_df and not filtered_df[filtered_df['Type'].astype(str).str.lower()=='residential'].empty
-    has_com_f = 'Type' in filtered_df and not filtered_df[filtered_df['Type'].astype(str).str.lower()=='commercial'].empty
-    c_p1,c_p2 = (st.columns(2) if has_res_f and has_com_f else (st,None))
-    if has_res_f:
-        with c_p1: st.markdown(f"<h4 style='text-align:center;color:{THEME_PLOTLY['primary']};'>Residential</h4>",unsafe_allow_html=True); create_property_type_bar_chart(filtered_df[filtered_df['Type'].astype(str).str.lower()=='residential'].copy(),"Residential Types",THEME_PLOTLY)
-    if has_com_f and c_p2:
-        with c_p2: st.markdown(f"<h4 style='text-align:center;color:{THEME_PLOTLY['primary']};'>Commercial</h4>",unsafe_allow_html=True); create_property_type_bar_chart(filtered_df[filtered_df['Type'].astype(str).str.lower()=='commercial'].copy(),"Commercial Types",THEME_PLOTLY,1)
-    elif has_com_f: st.markdown(f"<h4 style='text-align:center;color:{THEME_PLOTLY['primary']};'>Commercial</h4>",unsafe_allow_html=True); create_property_type_bar_chart(filtered_df[filtered_df['Type'].astype(str).str.lower()=='commercial'].copy(),"Commercial Types",THEME_PLOTLY,1)
-    if not has_res_f and not has_com_f: st.caption("No Residential/Commercial properties for breakdown.")
+    # Check if 'Type' column exists before using it
+    has_type_column = 'Type' in filtered_df.columns
+    
+    res_df = pd.DataFrame()
+    com_df = pd.DataFrame()
+
+    if has_type_column and not filtered_df.empty:
+        res_df = filtered_df[filtered_df['Type'].astype(str).str.lower()=='residential'].copy()
+        com_df = filtered_df[filtered_df['Type'].astype(str).str.lower()=='commercial'].copy()
+
+    has_res_f = not res_df.empty
+    has_com_f = not com_df.empty
+    
+    if has_res_f and has_com_f:
+        col1_pt, col2_pt = st.columns(2)
+        with col1_pt:
+            st.markdown(f"<h4 style='text-align:center;color:{THEME_PLOTLY['primary']};'>Residential</h4>",unsafe_allow_html=True)
+            create_property_type_bar_chart(res_df,"Residential Types",THEME_PLOTLY)
+        with col2_pt:
+            st.markdown(f"<h4 style='text-align:center;color:{THEME_PLOTLY['primary']};'>Commercial</h4>",unsafe_allow_html=True)
+            create_property_type_bar_chart(com_df,"Commercial Types",THEME_PLOTLY,1)
+    elif has_res_f:
+        st.markdown(f"<h4 style='text-align:center;color:{THEME_PLOTLY['primary']};'>Residential</h4>",unsafe_allow_html=True)
+        create_property_type_bar_chart(res_df,"Residential Types",THEME_PLOTLY)
+    elif has_com_f:
+        st.markdown(f"<h4 style='text-align:center;color:{THEME_PLOTLY['primary']};'>Commercial</h4>",unsafe_allow_html=True)
+        create_property_type_bar_chart(com_df,"Commercial Types",THEME_PLOTLY,1)
+    else:
+        if not has_type_column and not filtered_df.empty:
+             st.caption("Property 'Type' column is missing. Cannot provide Residential/Commercial breakdown.")
+        elif filtered_df.empty:
+            st.caption("No data to provide Residential/Commercial breakdown.")
+        else: # Type column exists, but no residential or commercial properties in filtered data
+            st.caption("No Residential or Commercial properties in the current selection for breakdown.")
+
 
     st.subheader('📋 Property Data Preview')
     if not filtered_df.empty:
         disp_df = filtered_df.copy()
-        for c,dv in {'Name':'N/A','Type':'N/A','Category':'N/A','Parish':'N/A','Property Type':'N/A','Description':'N/A'}.items():
-            if c not in disp_df: disp_df[c]=dv
-        disp_df['Price_f'] = pd.to_numeric(disp_df['Price'],errors='coerce').apply(lambda x:format_currency(x)) 
-        disp_df['Size_f'] = pd.to_numeric(disp_df['Size_SqFt'],errors='coerce').apply(lambda x:f"{x:,.0f} Sq. Ft." if pd.notna(x)and x>0 else("0 Sq. Ft." if x==0 else "N/A")) 
-        disp_df['DQ_f'] = pd.to_numeric(disp_df['Data Quality Score'],errors='coerce').apply(lambda x:f"<span class='{get_data_quality_class(x)}'>{x:.0f}/100</span>" if pd.notna(x) else "N/A") 
-        for c in ['Bedrooms','Bathrooms']: disp_df[c]=pd.to_numeric(disp_df[c],errors='coerce').fillna(0).astype(int) 
+        # Ensure all display columns exist, fill with N/A if not
+        default_display_cols = {'Name':'N/A','Type':'N/A','Category':'N/A','Parish':'N/A','Property Type':'N/A','Description':'N/A', 'Price': 0, 'Size_SqFt': 0, 'Data Quality Score':0, 'Bedrooms':0, 'Bathrooms':0}
+        for c, dv in default_display_cols.items():
+            if c not in disp_df.columns: 
+                disp_df[c] = dv
+            elif c in ['Price', 'Size_SqFt', 'Data Quality Score', 'Bedrooms', 'Bathrooms']: # Ensure numeric types for formatting
+                 disp_df[c] = pd.to_numeric(disp_df[c], errors='coerce').fillna(dv if c not in ['Price', 'Size_SqFt'] else 0)
+
+
+        disp_df['Price_f'] = disp_df['Price'].apply(lambda x:format_currency(x)) 
+        disp_df['Size_f'] = disp_df['Size_SqFt'].apply(lambda x:f"{x:,.0f} Sq. Ft." if pd.notna(x)and x>0 else("0 Sq. Ft." if x==0 else "N/A")) 
+        disp_df['DQ_f'] = disp_df['Data Quality Score'].apply(lambda x:f"<span class='{get_data_quality_class(x)}'>{x:.0f}/100</span>" if pd.notna(x) else "N/A") 
+        
+        # Ensure Bedrooms and Bathrooms are integers for display
+        disp_df['Bedrooms']= disp_df['Bedrooms'].astype(int) 
+        disp_df['Bathrooms']= disp_df['Bathrooms'].astype(int)
         
         disp_order = ['Name','Type','Category','Parish','Property Type','Price_f','Size_f','Bedrooms','Bathrooms','DQ_f','Description']
-        final_cols = [c for c in disp_order if c in disp_df]
+        # Filter out columns not present in disp_df from disp_order
+        final_cols_present = [c for c in disp_order if c in disp_df.columns or c in ['Price_f', 'Size_f', 'DQ_f']] # Check for formatted columns too
+        
         rename_map_disp = {'Price_f':'Price (USD)','Size_f':'Size','DQ_f':'Data Quality'}
-        disp_df_renamed = disp_df[final_cols].rename(columns=rename_map_disp)
-        final_cols_renamed = [rename_map_disp.get(c,c) for c in final_cols]
+        # Select only existing columns for renaming and display
+        disp_df_renamed = disp_df[final_cols_present].rename(columns=rename_map_disp)
+        final_cols_renamed = [rename_map_disp.get(c,c) for c in final_cols_present] # Get new names
 
         if not disp_df_renamed.empty:
             st.write(f'<div style="max-height:500px;overflow-y:auto;">{disp_df_renamed[final_cols_renamed].to_html(escape=False,index=False,classes="dataframe",border=0)}</div>',unsafe_allow_html=True)
-            dl_cols_drop = [c for c in ['lat','lon','coords'] if c in filtered_df] 
+            
+            # Prepare download dataframe
+            dl_cols_drop = [c for c in ['lat','lon','coords', 'map_coords'] if c in filtered_df.columns] 
             dl_df = filtered_df.drop(columns=dl_cols_drop,errors='ignore').copy()
             st.download_button(label="📥 Download Data as CSV",data=dl_df.to_csv(index=False).encode('utf-8'),file_name=f'{selected_market.lower().replace(" ","_")}_properties.csv',mime='text/csv')
-    else: st.caption(f"No property data for current filters in {selected_market}.")
+    else: st.caption(f"No property data to display for current filters in {selected_market}.")
 
     st.markdown(f"""---<div style="text-align:center;color:var(--text-neutral);font-size:0.9em;padding-top:10px;"><p>Data: <a href="https://www.terracaribbean.com" target="_blank" style="color:var(--accent);">Terra Caribbean</a> • {len(filtered_df):,} props analyzed</p><p>© {pd.Timestamp.now().year} Terra Caribbean Market Analytics • Prices USD</p><p>Created by <b>Matthew Blackman</b>. Assisted by <b>AI</b>.</p></div>""",unsafe_allow_html=True)
 
