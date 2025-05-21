@@ -349,6 +349,7 @@ def show_data_quality_report(df):
                 <li><b>Description is empty:</b> -15 points</li>
                 <li><b>Bedrooms count is 0:</b> -10 points</li>
                 <li><b>Bathrooms count is 0:</b> -10 points</li>
+                <li><b>Size (Sq. Ft.) is missing or 0:</b> -10 points</li> 
                 <li><b>Category (e.g., For Sale, Rent) is 'Unknown':</b> -5 points</li>
                 <li><b>Type (e.g., Residential, Commercial) is 'Unknown':</b> -5 points</li>
             </ul>
