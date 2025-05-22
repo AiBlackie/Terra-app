@@ -626,7 +626,7 @@ def main():
         st.subheader("AI Search")
         nl_query = ""
         if ai_enabled:
-            nl_query = st.text_input(f"🔍 Ask about {selected_market} properties",placeholder="e.g., 'St. James over $1,000,000'",help="Prices in USD. AI can filter by keywords, price, property type, etc.")
+            nl_query = st.text_input(f"🔍 Ask about {selected_market} properties",placeholder="e.g., 'St. James over 100,000 Sq Ft'",help="Prices in USD. AI can filter by keywords, price, property type, etc.")
         else:
             st.info("AI Search disabled (OpenAI API key not configured or invalid).")
 
