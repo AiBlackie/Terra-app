@@ -609,7 +609,7 @@ def safe_isin_filter(df, col_name, selected_values):
 def main():
     ai_enabled = initialize_ai()
     with st.sidebar:
-        st.image("https://s3.us-east-2.amazonaws.com/terracaribbean.com/wp-content/uploads/2025/04/08080016/site-logo.png",width=200)
+        st.image("https://www.terracaribbean.com/SiteAssets/terra_caribbean.png?",width=200)
         if OPENWEATHERMAP_API_KEY: display_weather_sidebar(OPENWEATHERMAP_API_KEY); st.sidebar.markdown("---")
         st.title("Filters & Tools")
         markets_list = list(MARKET_DATA_SOURCES.keys())
@@ -626,7 +626,7 @@ def main():
         st.subheader("AI Search")
         nl_query = ""
         if ai_enabled:
-            nl_query = st.text_input(f"🔍 Ask about {selected_market} properties",placeholder="e.g., 'St. James over $1,000,000'",help="Prices in USD. AI can filter by keywords, price, property type, etc.")
+            nl_query = st.text_input(f"🔍 Ask about {selected_market} properties",placeholder="e.g., 'St. James over 100,000 Sq Ft'",help="Prices in USD. AI can filter by keywords, price, property type, etc.")
         else:
             st.info("AI Search disabled (OpenAI API key not configured or invalid).")
 
