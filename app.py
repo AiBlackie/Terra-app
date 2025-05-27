@@ -609,7 +609,7 @@ def safe_isin_filter(df, col_name, selected_values):
 def main():
     ai_enabled = initialize_ai()
     with st.sidebar:
-        st.image("https://www.terracaribbean.com/SiteAssets/terra_caribbean.png?",width=200)
+        st.image("https://s3.us-east-2.amazonaws.com/terracaribbean.com/wp-content/uploads/2025/04/08080016/site-logo.png",width=200)
         if OPENWEATHERMAP_API_KEY: display_weather_sidebar(OPENWEATHERMAP_API_KEY); st.sidebar.markdown("---")
         st.title("Filters & Tools")
         markets_list = list(MARKET_DATA_SOURCES.keys())
